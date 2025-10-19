@@ -8,13 +8,12 @@ from autograd.scipy.special import gammaln, digamma, logsumexp
 from autograd.scipy.special import logsumexp
 
 from ssm.util import random_rotation, ensure_args_are_lists, \
-    logistic, logit, one_hot, ensure_args_are_lists2
+    logistic, logit, one_hot
 from ssm.regression import fit_linear_regression, generalized_newton_studentst_dof
 from ssm.preprocessing import interpolate_data
 from ssm.cstats import robust_ar_statistics
 from ssm.optimizers import adam, bfgs, rmsprop, sgd, lbfgs
 import ssm.stats as stats
-from numba import jit
 
 class Observations(object):
     # K = number of discrete states
@@ -37,7 +36,6 @@ class Observations(object):
 
     @ensure_args_are_lists
     def initialize(self, datas, inputs=None, masks=None, tags=None, init_method="random"):
-        return
         Ts = [data.shape[0] for data in datas]
 
         # Get initial discrete states
@@ -93,10 +91,6 @@ class Observations(object):
             self.params = params
             obj = _expected_log_joint(expectations)
             return -obj / T
-        
-        for expect in expectations:
-            print(expect[0].shape)
-        print('m step finish')
 
         self.params = optimizer(_objective, self.params, **kwargs)
 
@@ -631,7 +625,7 @@ class CategoricalObservations(Observations):
         of latent discrete states.
         """
         raise NotImplementedError
-    
+
 
 class ARCategoricalObservations(Observations):
 
@@ -681,11 +675,6 @@ class ARCategoricalObservations(Observations):
 
             # Iterate through all possible transitions in the data
             for t in range(1, len(xoh)):  # start from 1 because we need t-1
-
-                # prev_xoh = xoh[t-1, 0]  # Previous state
-                # curr_xoh = xoh[t, 0]    # Current state
-                # outer_product = np.outer(prev_xoh, curr_xoh)  # Outer product of previous and current state
-                # transition_matrix += outer_product * weights[t-1, k]
                 transition_matrix[x[t-1], x[t]] += weights[t-1, k]
 
             # Smoothing and normalization to prevent division by zero and to handle unobserved transitions
@@ -730,139 +719,6 @@ class ARCategoricalObservations(Observations):
         raise NotImplementedError
     
 
-class MLPARCategoricalObservations(Observations):
-
-    def __init__(self, trans_prob, K, D, M=0, C=2, discount=0.95, threshold=1e-3, tau=1):
-        """
-        @param C:  number of classes in the categorical observations
-        """
-        super(MLPARCategoricalObservations, self).__init__(K, D, M)
-        self.K = K
-        self.C = C
-        self.logits = npr.randn(K, D, C, trans_prob.shape[1])
-        self.trans_prob = trans_prob
-        self.discount = discount
-        self.threshold = threshold
-        self.tau = tau
-        # self.pi = self.get_policy()
-
-        hidden_size = 16
-        # hidden_size = 8
-        self.W1 = np.random.randn((C+trans_prob.shape[1]), hidden_size) * np.sqrt(2. / C)
-        self.b1 = np.zeros((1, hidden_size))
-        self.W2 = np.random.randn(hidden_size, K * C) * np.sqrt(2. / hidden_size)
-        self.b2 = np.zeros((1, K * C))
-    
-    @property
-    def params(self):
-        return (self.W1, self.b1, self.W2, self.b2)
-
-    @params.setter
-    def params(self, value):
-        self.W1 = value[0]
-        self.b1 = value[1]
-        self.W2 = value[2]
-        self.b2 = value[3]
-
-    def sigmoid(self, x):
-        return 1 / (1 + np.exp(-x))
-    
-    def softmax(self, x):
-        expx = np.exp(x - x.max(axis=-1, keepdims=True))
-        return expx / expx.sum(axis=-1, keepdims=True)
-
-    def log_likelihoods(self, data, data2, input, mask, tag):
-
-        mask = np.ones_like(data, dtype=bool) if mask is None else mask
-
-        xoh = one_hot(data, self.C)
-        # aoh = one_hot(data2[:, None, :], self.trans_prob.shape[1])
-        # xoh = np.concatenate((xoh[:, 0, :], aoh[:, 0, :]), axis=1) 
-        T = xoh.shape[0]
-        
-        Z1 = np.dot(xoh[:, 0, :], self.W1[:self.C]) + self.b1
-        A1 = self.sigmoid(Z1)
-        Z2 = np.dot(A1, self.W2) + self.b2
-        # A2 = Z2.reshape(T, self.K, self.C+self.trans_prob.shape[1])
-        A2 = self.softmax(Z2.reshape(T, self.K, self.C))
-        
-        return stats.uniarcategorical_logpdf(data[:, None, :], data2[:, None, :], np.log(A2[:, :, None, :]), self.logits, mask=mask[:, None, :])
-
-    def sample_x(self, z, xhist, ahist, input=None, tag=None, with_noise=True):
-        if len(xhist) < 1:
-            xhist = [npr.choice(self.C, p=np.ones(self.C)/self.C)]
-        else:
-            xhist = xhist.astype(int)[:, 0]
-        if len(ahist) < 1:
-            ahist = [4]
-        else:
-            ahist = ahist.astype(int)[:, 0]
-
-        log_pi = self.logits
-        ps = np.exp(log_pi - logsumexp(log_pi, axis=-1, keepdims=True))
-        current_x = npr.choice(self.C, p=self.trans_prob[xhist[-1], ahist[-1]])
-        current_a = np.array([npr.choice(self.trans_prob.shape[1], p=ps[z, d, current_x]) for d in range(self.D)])
-        return (np.array([current_x for d in range(self.D)]), current_a)
-
-    def m_step(self, expectations, datas, data2s, inputs, masks, tags,
-               optimizer="bfgs", mlr=1e-4, **kwargs):
-        """
-        If M-step cannot be done in closed form for the observations, default to SGD.
-        """
-
-        optimizer = dict(adam=adam, bfgs=bfgs, lbfgs=lbfgs, rmsprop=rmsprop, sgd=sgd)[optimizer]
-
-        # expected log joint
-        def _expected_log_joint(expectations):
-            elbo = self.log_prior()
-            for data, data2, input, mask, tag, (expected_states, _, _) \
-                in zip(datas, data2s, inputs, masks, tags, expectations):
-                mask = np.ones_like(data, dtype=bool) if mask is None else mask
-                lls = self.log_likelihoods(data, data2, input, mask, tag)
-                elbo += np.sum(expected_states * lls)
-            return elbo
-
-        # define optimization target
-        T = sum([data.shape[0] for data in datas])
-        def _objective(params, itr):
-            self.params = params
-            obj = _expected_log_joint(expectations)
-            return -obj / T
-
-        self.params = optimizer(_objective, self.params, **kwargs)
-        
-    @ensure_args_are_lists2
-    def initialize(self, datas, data2s, inputs=None, masks=None, tags=None, init_method="random"):
-        Ts = [data.shape[0] for data in datas]
-
-        # Get initial discrete states
-        if init_method.lower() == 'kmeans':
-            # KMeans clustering
-            from sklearn.cluster import KMeans
-            km = KMeans(self.K)
-            km.fit(np.vstack(datas))
-            zs = np.split(km.labels_, np.cumsum(Ts)[:-1])
-
-        elif init_method.lower() =='random':
-            # Random assignment
-            zs = [npr.choice(self.K, size=T) for T in Ts]
-
-        else:
-            raise Exception('Not an accepted initialization type: {}'.format(init_method))
-
-        # Make a one-hot encoding of z and treat it as HMM expectations
-        Ezs = [one_hot(z, self.K) for z in zs]
-        expectations = [(Ez, None, None) for Ez in Ezs]
-
-        # Set the variances all at once to use the setter
-        self.m_step(expectations, datas, data2s, inputs, masks, tags)
-
-    def smooth(self, expectations, data, input, tag):
-        """
-        Compute the mean observation under the posterior distribution
-        of latent discrete states.
-        """
-        raise NotImplementedError
 
 class InputDrivenObservations(Observations):
 
@@ -1035,7 +891,7 @@ class InputDrivenObservations(Observations):
                 hess += temp_hess - Xdf.T@pXdf
             # add contribution of prior to hessian
             if self.prior_sigma != 0:
-                hess += (1 / (self.prior_sigma) ** 2)
+                hess += (1 / (self.prior_sigma) ** 2) * np.eye((self.C - 1) * self.M)
             return hess/T
 
         from scipy.optimize import minimize

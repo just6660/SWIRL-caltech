@@ -10,7 +10,7 @@ import ssm.emissions as emssn
 import ssm.hmm_old as hmm_old
 import ssm.variational as varinf
 from ssm.util import ensure_args_are_lists, \
-    ensure_slds_args_not_none, ensure_variational_args_are_lists, ssm_pbar, ensure_args_are_lists2
+    ensure_slds_args_not_none, ensure_variational_args_are_lists, ssm_pbar
 from ssm.messages import hmm_expected_states, viterbi, arhmm_viterbi, arhmm_normalizer, hmm_normalizer
 
 class HMMs(object):
@@ -232,11 +232,8 @@ class ARHMMs(object):
             standard=trans.StationaryTransitions,
             stationary=trans.StationaryTransitions,
             recurrent=trans.RecurrentTransitions,
-            recurrent2=trans.Recurrent2Transitions,
             recurrent_only=trans.RecurrentOnlyTransitions,
-            mlprecurrent=trans.MLPRecurrentTransitions,
-            tablerecurrent=trans.TableRecurrentTransitions,
-            mlp2recurrent=trans.MLP2RecurrentTransitions,
+            mlprecurrent=trans.MLPRecurrentTransitions
             )
 
         if isinstance(transitions, str):
