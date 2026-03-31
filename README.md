@@ -1,5 +1,8 @@
 # SWIRL — State-space Inference with Reward Learning
 
+> This codebase is a Caltech mouse behavior adaptation built on top of the original SWIRL framework by the BRAINML-GT lab.
+> **Original repository:** [https://github.com/BRAINML-GT/SWIRL](https://github.com/BRAINML-GT/SWIRL)
+
 SWIRL learns a hierarchical hidden Markov model (HMM) with a neural-network reward function from animal behavior sequences. It was developed for the [CalMS21 Task 1](https://data.caltech.edu/records/1991) dataset, which labels mouse social behavior into four classes: **Attack**, **Investigation**, **Mount**, and **Other**.
 
 ---
