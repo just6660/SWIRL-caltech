@@ -8,11 +8,11 @@ Usage:
   python analyze_caltech_compressed.py [K] [seed]
 
 Output files (../results/):
-  compressed_{K}_{seed}_training_curves.pdf
-  compressed_{K}_{seed}_Rsa_net1.pdf
-  compressed_{K}_{seed}_Rsa_net2.pdf
-  compressed_{K}_{seed}_segments.svg
-  compressed_multiK_{seed}_net{1,2}_comparison.pdf   (if multiple K results exist)
+  compressed_{K}_{seed}_training_curves.png
+  compressed_{K}_{seed}_Rsa_net1.png
+  compressed_{K}_{seed}_Rsa_net2.png
+  compressed_{K}_{seed}_segments.png
+  compressed_multiK_{seed}_net{1,2}_comparison.png   (if multiple K results exist)
 """
 
 import sys
@@ -25,6 +25,7 @@ from jax.scipy.special import logsumexp as jax_logsumexp
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 
 jax.config.update("jax_enable_x64", True)
 
@@ -178,37 +179,37 @@ train_LL2_ps = [ll / (N_train * T) for ll in train_LL2]
 test_LL2_ps  = [ll / (N_test  * T) for ll in test_LL2]
 
 fig, axes = plt.subplots(1, 2, figsize=(13, 4), dpi=200)
-c1, c2 = '#1f77b4', '#ff7f0e'
+c1, c2 = '#356c87', '#7fb5cc'
 SKIP = 5
 
 all_curves = [train_LL1_ps, test_LL1_ps, train_LL2_ps, test_LL2_ps]
 
 ax = axes[0]
-ax.plot(train_LL1_ps, color=c1, linestyle='-',  label='net1 train (S-1)')
-ax.plot(test_LL1_ps,  color=c1, linestyle='--', label='net1 test  (S-1)')
-ax.plot(train_LL2_ps, color=c2, linestyle='-',  label='net2 train (S-2)')
-ax.plot(test_LL2_ps,  color=c2, linestyle='--', label='net2 test  (S-2)')
-ax.axvline(x=49.5, color='gray', linestyle=':', linewidth=1, label='phase 1→2')
-ax.set_xlabel('EM iteration'); ax.set_ylabel('LL / step')
-ax.set_title(f'compressed K={K}, seed={seed} (full)'); ax.legend(fontsize=7)
+ax.plot(train_LL1_ps, color=c1, linestyle='-',  label='Current State — Training')
+ax.plot(test_LL1_ps,  color=c1, linestyle='--', label='Current State — Test')
+ax.plot(train_LL2_ps, color=c2, linestyle='-',  label='Current & Previous State — Training')
+ax.plot(test_LL2_ps,  color=c2, linestyle='--', label='Current & Previous State — Test')
+ax.axvline(x=49.5, color='#888888', linestyle=':', linewidth=1, label='Learning Phase Transition')
+ax.set_xlabel('Training Iteration'); ax.set_ylabel('Log-Likelihood per Step')
+ax.set_title(f'{K} Behavioral Modes — Full Training View (Behavior Switches Only)'); ax.legend(fontsize=7)
 
 ax = axes[1]
-ax.plot(train_LL1_ps, color=c1, linestyle='-',  label='net1 train (S-1)')
-ax.plot(test_LL1_ps,  color=c1, linestyle='--', label='net1 test  (S-1)')
-ax.plot(train_LL2_ps, color=c2, linestyle='-',  label='net2 train (S-2)')
-ax.plot(test_LL2_ps,  color=c2, linestyle='--', label='net2 test  (S-2)')
-ax.axvline(x=49.5, color='gray', linestyle=':', linewidth=1, label='phase 1→2')
+ax.plot(train_LL1_ps, color=c1, linestyle='-',  label='Current State — Training')
+ax.plot(test_LL1_ps,  color=c1, linestyle='--', label='Current State — Test')
+ax.plot(train_LL2_ps, color=c2, linestyle='-',  label='Current & Previous State — Training')
+ax.plot(test_LL2_ps,  color=c2, linestyle='--', label='Current & Previous State — Test')
+ax.axvline(x=49.5, color='#888888', linestyle=':', linewidth=1, label='Learning Phase Transition')
 skip = min(SKIP, len(train_LL1_ps) - 1)
 ax.set_xlim(skip, len(train_LL1_ps) - 1)
 ys_zoom = [v for c in all_curves for v in c[skip:]]
 margin = (max(ys_zoom) - min(ys_zoom)) * 0.15 or 1e-5
 ax.set_ylim(min(ys_zoom) - margin, max(ys_zoom) + margin)
-ax.set_xlabel('EM iteration'); ax.set_ylabel('LL / step')
-ax.set_title(f'compressed K={K}, seed={seed} (iter {skip}+)'); ax.legend(fontsize=7)
+ax.set_xlabel('Training Iteration'); ax.set_ylabel('Log-Likelihood per Step')
+ax.set_title(f'{K} Behavioral Modes — Converged Region (Behavior Switches Only)'); ax.legend(fontsize=7)
 
-plt.suptitle('Training curves (compressed)', y=1.01)
+plt.suptitle('Model Training Curves (Behavior Switches Only)', y=1.01)
 plt.tight_layout()
-path = save_folder + f'compressed_{K}_{seed}_training_curves.pdf'
+path = save_folder + f'compressed_{K}_{seed}_training_curves.png'
 plt.savefig(path, bbox_inches='tight')
 print(f"\nSaved {path}")
 plt.close()
@@ -223,6 +224,7 @@ def normalize(data):
 def plot_reward_heatmap(reward_arr, title, fname):
     reward_arr = np.array(reward_arr).reshape((K, C, C))
     ncols = max(K, 1)
+    navy_white = LinearSegmentedColormap.from_list('navy_white', ['#ffffff', '#356c87'])
     fig, axes = plt.subplots(1, ncols, figsize=(4 * ncols, 4), dpi=200)
     if K == 1:
         axes = [axes]
@@ -230,14 +232,14 @@ def plot_reward_heatmap(reward_arr, title, fname):
         ax = axes[j]
         plot_data = reward_arr[j].copy()
         np.fill_diagonal(plot_data, np.nan)
-        im = ax.imshow(normalize(plot_data), cmap='viridis', aspect='auto')
+        im = ax.imshow(normalize(plot_data), cmap=navy_white, aspect='auto')
         ax.set_xticks(range(C))
         ax.set_xticklabels(BEHAVIOR_NAMES, rotation=30, ha='right', fontsize=8)
         ax.set_yticks(range(C))
         ax.set_yticklabels(BEHAVIOR_NAMES, fontsize=8)
-        ax.set_xlabel('action (next behavior)')
-        ax.set_ylabel('state (current behavior)')
-        ax.set_title(f'Hidden state {j + 1}')
+        ax.set_xlabel('Next Behavior')
+        ax.set_ylabel('Current Behavior')
+        ax.set_title(f'Behavioral Mode {j + 1}')
         ax.grid(False)
         plt.colorbar(im, ax=ax)
     plt.suptitle(title)
@@ -248,28 +250,31 @@ def plot_reward_heatmap(reward_arr, title, fname):
 
 reward1 = get_reward_m(trans_probs, R_params1, apply_fn)
 plot_reward_heatmap(reward1,
-    f'Reward R(s,a) — net1 (S-1), compressed K={K}',
-    save_folder + f'compressed_{K}_{seed}_Rsa_net1.pdf')
+    'Reward — Current State',
+    save_folder + f'compressed_{K}_{seed}_Rsa_net1.png')
 
 reward2 = get_reward_m(trans_probs, R_params2, apply_fn)
 plot_reward_heatmap(reward2,
-    f'Reward R(s,a) — net2 (S-2), compressed K={K}',
-    save_folder + f'compressed_{K}_{seed}_Rsa_net2.pdf')
+    'Reward — Current & Previous State',
+    save_folder + f'compressed_{K}_{seed}_Rsa_net2.png')
 
 # 3. Segmentation raster
 fig, axes = plt.subplots(2, 1, figsize=(14, 5), dpi=200)
-for ax, zs, label in [(axes[0], zs1, 'net1 (S-1)'), (axes[1], zs2, 'net2 (S-2)')]:
-    ax.imshow(zs + 1, aspect='auto', cmap='inferno', vmin=0, vmax=K + 1)
-    colors = plt.cm.magma(np.linspace(0, 1, K + 1))
+_seg_base = LinearSegmentedColormap.from_list('navy_states', ['#356c87', '#cce4ef'])
+state_colors = [_seg_base(i / max(K - 1, 1)) for i in range(K)]
+seg_cmap = ListedColormap(['#f0f0f0'] + list(state_colors) + ['#f0f0f0'])
+_seg_labels = ['Current State', 'Current & Previous State']
+for ax, zs, seg_label in zip(axes, [zs1, zs2], _seg_labels):
+    ax.imshow(zs + 1, aspect='auto', cmap=seg_cmap, vmin=0, vmax=K + 1)
     for idx in range(K):
-        ax.plot([], [], color=colors[idx + 1], label=f'h{idx + 1}')
+        ax.plot([], [], color=state_colors[idx], label=f'Mode {idx + 1}')
     ax.legend(loc='upper right', fontsize=7)
-    ax.set_xlabel('transition step')
-    ax.set_ylabel('trajectory')
-    ax.set_title(f'Hidden-state segmentation (compressed) — {label} (K={K})')
+    ax.set_xlabel('Behavior Transition Index')
+    ax.set_ylabel('Animal Trajectory')
+    ax.set_title(f'Mode Segmentation — {seg_label}')
     ax.grid(False)
 plt.tight_layout()
-path = save_folder + f'compressed_{K}_{seed}_segments.svg'
+path = save_folder + f'compressed_{K}_{seed}_segments.png'
 plt.savefig(path, bbox_inches='tight')
 plt.close()
 print(f"Saved {path}")
@@ -297,11 +302,13 @@ def _load_multi_K(model_tag, seed_):
             pass
     return entries
 
-for model_tag, model_label in [('net1', 'S-1'), ('net2', 'S-2')]:
+for model_tag, model_label in [('net1', 'Current State'), ('net2', 'Current & Previous State')]:
     entries = _load_multi_K(model_tag, seed)
     if len(entries) < 2:
         continue
-    colors = plt.cm.tab10(np.linspace(0, 0.9, len(entries)))
+    n_ent = len(entries)
+    _mk_base = LinearSegmentedColormap.from_list('navy_mk', ['#356c87', '#cce4ef'])
+    colors = [_mk_base(i / max(n_ent - 1, 1)) for i in range(n_ent)]
     all_mk_curves = [c for _, tll, tell in entries for c in (tll, tell)]
     n_iters_mk    = len(entries[0][1])
 
@@ -309,29 +316,29 @@ for model_tag, model_label in [('net1', 'S-1'), ('net2', 'S-2')]:
 
     ax = axes[0]
     for (k_val, tll, tell), col in zip(entries, colors):
-        ax.plot(tll,  color=col, linestyle='-',  label=f'K={k_val} train')
-        ax.plot(tell, color=col, linestyle='--', label=f'K={k_val} test')
-    ax.axvline(x=49.5, color='gray', linestyle=':', linewidth=1)
-    ax.set_xlabel('EM iteration'); ax.set_ylabel('LL / step')
-    ax.set_title(f'Multi-K compressed — {model_label}, seed={seed} (full)')
+        ax.plot(tll,  color=col, linestyle='-',  label=f'{k_val} Modes — Training')
+        ax.plot(tell, color=col, linestyle='--', label=f'{k_val} Modes — Test')
+    ax.axvline(x=49.5, color='#888888', linestyle=':', linewidth=1)
+    ax.set_xlabel('Training Iteration'); ax.set_ylabel('Log-Likelihood per Step')
+    ax.set_title(f'{model_label} — Full View')
     ax.legend(fontsize=7, ncol=2)
 
     ax = axes[1]
     for (k_val, tll, tell), col in zip(entries, colors):
-        ax.plot(tll,  color=col, linestyle='-',  label=f'K={k_val} train')
-        ax.plot(tell, color=col, linestyle='--', label=f'K={k_val} test')
-    ax.axvline(x=49.5, color='gray', linestyle=':', linewidth=1)
+        ax.plot(tll,  color=col, linestyle='-',  label=f'{k_val} Modes — Training')
+        ax.plot(tell, color=col, linestyle='--', label=f'{k_val} Modes — Test')
+    ax.axvline(x=49.5, color='#888888', linestyle=':', linewidth=1)
     skip = min(SKIP, n_iters_mk - 1)
     ax.set_xlim(skip, n_iters_mk - 1)
     ys_mk    = [v for c in all_mk_curves for v in c[skip:]]
     margin_mk = (max(ys_mk) - min(ys_mk)) * 0.15 or 1e-5
     ax.set_ylim(min(ys_mk) - margin_mk, max(ys_mk) + margin_mk)
-    ax.set_xlabel('EM iteration'); ax.set_ylabel('LL / step')
-    ax.set_title(f'Multi-K compressed — {model_label}, seed={seed} (iter {skip}+)')
+    ax.set_xlabel('Training Iteration'); ax.set_ylabel('Log-Likelihood per Step')
+    ax.set_title(f'{model_label} — Converged')
     ax.legend(fontsize=7, ncol=2)
 
     plt.tight_layout()
-    path = save_folder + f'compressed_multiK_{seed}_{model_tag}_comparison.pdf'
+    path = save_folder + f'compressed_multiK_{seed}_{model_tag}_comparison.png'
     plt.savefig(path, bbox_inches='tight')
     plt.close()
     print(f"Saved {path}")

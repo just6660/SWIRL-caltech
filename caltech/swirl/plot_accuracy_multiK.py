@@ -9,8 +9,8 @@ Usage:
   python plot_accuracy_multiK.py [seed]
 
 Output (../results/):
-  compressed_multiK_{seed}_net1_accuracy.pdf
-  compressed_multiK_{seed}_net2_accuracy.pdf
+  compressed_multiK_{seed}_net1_accuracy.png
+  compressed_multiK_{seed}_net2_accuracy.png
 """
 
 import sys
@@ -25,6 +25,7 @@ from jax.scipy.special import logsumexp as jax_logsumexp
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 
 jax.config.update("jax_enable_x64", True)
 
@@ -174,7 +175,7 @@ def load_entries(model_tag):
     return entries
 
 
-for model_tag, model_label in [('net1', 'S-1'), ('net2', 'S-2')]:
+for model_tag, model_label in [('net1', 'Current State'), ('net2', 'Current & Previous State')]:
     print(f"\n=== {model_label} ({model_tag}) ===")
     entries = load_entries(model_tag)
     if not entries:
@@ -187,12 +188,12 @@ for model_tag, model_label in [('net1', 'S-1'), ('net2', 'S-2')]:
 
     x     = np.arange(len(k_vals))
     width = 0.35
-    c_tr  = '#1f77b4'
-    c_te  = '#ff7f0e'
+    c_tr  = '#356c87'
+    c_te  = '#7fb5cc'
 
     fig, ax = plt.subplots(figsize=(max(5, 2 * len(k_vals) + 1), 4), dpi=200)
-    bars_tr = ax.bar(x - width / 2, train_accs, width, label='Train', color=c_tr)
-    bars_te = ax.bar(x + width / 2, test_accs,  width, label='Test',  color=c_te)
+    bars_tr = ax.bar(x - width / 2, train_accs, width, label='Training Set', color=c_tr)
+    bars_te = ax.bar(x + width / 2, test_accs,  width, label='Test Set',     color=c_te)
 
     for bar in bars_tr:
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.003,
@@ -201,16 +202,16 @@ for model_tag, model_label in [('net1', 'S-1'), ('net2', 'S-2')]:
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.003,
                 f'{bar.get_height():.3f}', ha='center', va='bottom', fontsize=8)
 
-    ax.axhline(y=0.25, color='gray', linestyle='--', linewidth=1.2, label='Random (25%)')
+    ax.axhline(y=0.25, color='#888888', linestyle='--', linewidth=1.2, label='Chance Level (25%)')
     ax.set_xticks(x)
-    ax.set_xticklabels([f'K={k}' for k in k_vals])
-    ax.set_ylabel('Accuracy')
-    ax.set_title(f'Predictive train/test accuracy — compressed {model_label}, seed={seed}')
+    ax.set_xticklabels([f'{k} Modes' for k in k_vals])
+    ax.set_ylabel('Predictive Accuracy')
+    ax.set_title(f'Predictive Accuracy — {model_label}')
     ax.legend()
     ax.set_ylim(0, min(1.0, max(train_accs + test_accs) * 1.15))
 
     plt.tight_layout()
-    path = save_folder + f'compressed_multiK_{seed}_{model_tag}_accuracy.pdf'
+    path = save_folder + f'compressed_multiK_{seed}_{model_tag}_accuracy.png'
     plt.savefig(path, bbox_inches='tight')
     plt.close()
     print(f"  Saved {path}")
